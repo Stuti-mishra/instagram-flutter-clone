@@ -8,11 +8,15 @@
 		<dict>
 			<key>IntentsRestrictedWhileLocked</key>
 			<array/>
+			<key>IntentsRestrictedWhileProtectedDataUnavailable</key>
+			<array/>
 			<key>IntentsSupported</key>
 			<array>
-				<string>INSendMessageIntent</string>
 				<string>INSearchForMessagesIntent</string>
+				<string>INSendMessageIntent</string>
 				<string>INSetMessageAttributeIntent</string>
+				<string>SwipeDownIntent</string>
+				<string>SwipeUpIntent</string>
 			</array>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>

@@ -1,8 +1,10 @@
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:instagram_clone_flutter/models/user.dart' as model;
 import 'package:instagram_clone_flutter/resources/storage_methods.dart';
+import 'package:flutter/foundation.dart';
 
 class AuthMethods {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -11,15 +13,21 @@ class AuthMethods {
   // get user details
   Future<model.User> getUserDetails() async {
     User currentUser = _auth.currentUser!;
+    print('Current user UID: ${currentUser.uid}');
 
     DocumentSnapshot documentSnapshot =
         await _firestore.collection('users').doc(currentUser.uid).get();
 
-    return model.User.fromSnap(documentSnapshot);
+    if (documentSnapshot.exists) {
+      print('User document exists for UID: ${currentUser.uid}');
+      return model.User.fromSnap(documentSnapshot);
+    } else {
+      print('User document does not exist for UID: ${currentUser.uid}');
+      throw Exception("User document does not exist");
+    }
   }
 
   // Signing Up User
-
   Future<String> signUpUser({
     required String email,
     required String password,
@@ -27,12 +35,12 @@ class AuthMethods {
     required String bio,
     required Uint8List file,
   }) async {
-    String res = "Some error Occurred";
+    String res = "Some error occurred";
     try {
-      if (email.isNotEmpty ||
-          password.isNotEmpty ||
-          username.isNotEmpty ||
-          bio.isNotEmpty ||
+      if (email.isNotEmpty &&
+          password.isNotEmpty &&
+          username.isNotEmpty &&
+          bio.isNotEmpty &&
           file != null) {
         // registering user in auth with email and password
         UserCredential cred = await _auth.createUserWithEmailAndPassword(
@@ -40,9 +48,10 @@ class AuthMethods {
           password: password,
         );
 
-        String photoUrl =
-            await StorageMethods().uploadImageToStorage('profilePics', file, false);
+        // Upload the profile picture
+        String photoUrl = await StorageMethods().uploadImageToStorage('profilePics', file, false);
 
+        // If profile picture upload is successful, add user to Firestore
         model.User user = model.User(
           username: username,
           uid: cred.user!.uid,
@@ -53,7 +62,6 @@ class AuthMethods {
           following: [],
         );
 
-        // adding user in our database
         await _firestore
             .collection("users")
             .doc(cred.user!.uid)
@@ -64,9 +72,16 @@ class AuthMethods {
         res = "Please enter all the fields";
       }
     } catch (err) {
-      return err.toString();
+      // If an error occurs, delete the partially registered user from Firebase Auth
+      await _auth.currentUser?.delete();
+      res = err.toString();
     }
     return res;
+}
+
+
+  Future<String> uploadImage(Uint8List file) async {
+    return await StorageMethods().uploadImageToStorage('profilePics', file, false);
   }
 
   // logging in user
