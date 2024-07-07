@@ -6,6 +6,8 @@ import 'package:instagram_clone_flutter/utils/global_variable.dart';
 import 'package:instagram_clone_flutter/widgets/post_card.dart';
 
 class FeedScreen extends StatefulWidget {
+  static final ScrollController scrollController = ScrollController();
+
   const FeedScreen({Key? key}) : super(key: key);
 
   @override
@@ -41,7 +43,10 @@ class _FeedScreenState extends State<FeedScreen> {
               ],
             ),
       body: StreamBuilder(
-        stream: FirebaseFirestore.instance.collection('posts').snapshots(),
+        stream: FirebaseFirestore.instance
+            .collection('posts')
+            .orderBy('datePublished', descending: true)
+            .snapshots(),
         builder: (context,
             AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -50,6 +55,7 @@ class _FeedScreenState extends State<FeedScreen> {
             );
           }
           return ListView.builder(
+            controller: FeedScreen.scrollController,
             itemCount: snapshot.data!.docs.length,
             itemBuilder: (ctx, index) => Container(
               margin: EdgeInsets.symmetric(

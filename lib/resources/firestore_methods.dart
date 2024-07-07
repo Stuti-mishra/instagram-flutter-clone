@@ -8,13 +8,13 @@ class FireStoreMethods {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   Future<String> uploadPost(String description, Uint8List file, String uid,
-      String username, String profImage) async {
-    // asking uid here because we dont want to make extra calls to firebase auth when we can just get from our state management
+      String username, String profImage, {required bool isVideo}) async {
     String res = "Some error occurred";
     try {
-      String photoUrl =
-          await StorageMethods().uploadImageToStorage('posts', file, true);
-      String postId = const Uuid().v1(); // creates unique id based on time
+      String mediaUrl = isVideo
+          ? await StorageMethods().uploadVideoToStorage('posts', file)
+          : await StorageMethods().uploadImageToStorage('posts', file, true);
+      String postId = const Uuid().v1();
       Post post = Post(
         description: description,
         uid: uid,
@@ -22,8 +22,9 @@ class FireStoreMethods {
         likes: [],
         postId: postId,
         datePublished: DateTime.now(),
-        postUrl: photoUrl,
+        postUrl: mediaUrl,
         profImage: profImage,
+        isVideo: isVideo,
       );
       _firestore.collection('posts').doc(postId).set(post.toJson());
       res = "success";
@@ -37,12 +38,10 @@ class FireStoreMethods {
     String res = "Some error occurred";
     try {
       if (likes.contains(uid)) {
-        // if the likes list contains the user uid, we need to remove it
         _firestore.collection('posts').doc(postId).update({
           'likes': FieldValue.arrayRemove([uid])
         });
       } else {
-        // else we need to add uid to the likes array
         _firestore.collection('posts').doc(postId).update({
           'likes': FieldValue.arrayUnion([uid])
         });
@@ -54,13 +53,11 @@ class FireStoreMethods {
     return res;
   }
 
-  // Post comment
   Future<String> postComment(String postId, String text, String uid,
       String name, String profilePic) async {
     String res = "Some error occurred";
     try {
       if (text.isNotEmpty) {
-        // if the likes list contains the user uid, we need to remove it
         String commentId = const Uuid().v1();
         _firestore
             .collection('posts')
@@ -85,7 +82,6 @@ class FireStoreMethods {
     return res;
   }
 
-  // Delete Post
   Future<String> deletePost(String postId) async {
     String res = "Some error occurred";
     try {

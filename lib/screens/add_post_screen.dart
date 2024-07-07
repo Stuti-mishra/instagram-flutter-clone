@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -7,6 +8,7 @@ import 'package:instagram_clone_flutter/resources/firestore_methods.dart';
 import 'package:instagram_clone_flutter/utils/colors.dart';
 import 'package:instagram_clone_flutter/utils/utils.dart';
 import 'package:provider/provider.dart';
+import 'package:video_player/video_player.dart';
 
 class AddPostScreen extends StatefulWidget {
   const AddPostScreen({Key? key}) : super(key: key);
@@ -17,8 +19,17 @@ class AddPostScreen extends StatefulWidget {
 
 class _AddPostScreenState extends State<AddPostScreen> {
   Uint8List? _file;
+  XFile? _videoFile;
   bool isLoading = false;
   final TextEditingController _descriptionController = TextEditingController();
+  VideoPlayerController? _videoPlayerController;
+
+  @override
+  void dispose() {
+    super.dispose();
+    _descriptionController.dispose();
+    _videoPlayerController?.dispose();
+  }
 
   _selectImage(BuildContext parentContext) async {
     return showDialog(
@@ -28,25 +39,65 @@ class _AddPostScreenState extends State<AddPostScreen> {
           title: const Text('Create a Post'),
           children: <Widget>[
             SimpleDialogOption(
-                padding: const EdgeInsets.all(20),
-                child: const Text('Take a photo'),
-                onPressed: () async {
-                  Navigator.pop(context);
-                  Uint8List file = await pickImage(ImageSource.camera);
-                  setState(() {
-                    _file = file;
-                  });
-                }),
+              padding: const EdgeInsets.all(20),
+              child: const Text('Take a photo'),
+              onPressed: () async {
+                Navigator.pop(context);
+                Uint8List file = await pickImage(ImageSource.camera);
+                setState(() {
+                  _file = file;
+                  _videoFile = null;
+                  _videoPlayerController?.dispose();
+                  _videoPlayerController = null;
+                });
+              },
+            ),
             SimpleDialogOption(
-                padding: const EdgeInsets.all(20),
-                child: const Text('Choose from Gallery'),
-                onPressed: () async {
-                  Navigator.of(context).pop();
-                  Uint8List file = await pickImage(ImageSource.gallery);
+              padding: const EdgeInsets.all(20),
+              child: const Text('Take a video'),
+              onPressed: () async {
+                Navigator.of(context).pop();
+                XFile video = await pickVideo(ImageSource.camera);
+                _videoPlayerController = VideoPlayerController.file(File(video.path));
+                await _videoPlayerController!.initialize();
+                setState(() {
+                  _videoFile = video;
+                  _file = null;
+                });
+              },
+            ),
+            SimpleDialogOption(
+              padding: const EdgeInsets.all(20),
+              child: const Text('Choose photo from gallery'),
+              onPressed: () async {
+                Navigator.of(context).pop();
+                Uint8List? file = await pickImageFromGallery();
+                if (file != null) {
                   setState(() {
                     _file = file;
+                    _videoFile = null;
+                    _videoPlayerController?.dispose();
+                    _videoPlayerController = null;
                   });
-                }),
+                }
+              },
+            ),
+            SimpleDialogOption(
+              padding: const EdgeInsets.all(20),
+              child: const Text('Choose video from gallery'),
+              onPressed: () async {
+                Navigator.of(context).pop();
+                XFile? video = await pickVideoFromGallery();
+                if (video != null) {
+                  _videoPlayerController = VideoPlayerController.file(File(video.path));
+                  await _videoPlayerController!.initialize();
+                  setState(() {
+                    _videoFile = video;
+                    _file = null;
+                  });
+                }
+              },
+            ),
             SimpleDialogOption(
               padding: const EdgeInsets.all(20),
               child: const Text("Cancel"),
@@ -64,16 +115,30 @@ class _AddPostScreenState extends State<AddPostScreen> {
     setState(() {
       isLoading = true;
     });
-    // start the loading
     try {
-      // upload to storage and db
-      String res = await FireStoreMethods().uploadPost(
-        _descriptionController.text,
-        _file!,
-        uid,
-        username,
-        profImage,
-      );
+      String res;
+      if (_file != null) {
+        res = await FireStoreMethods().uploadPost(
+          _descriptionController.text,
+          _file!,
+          uid,
+          username,
+          profImage,
+          isVideo: false,
+        );
+      } else if (_videoFile != null) {
+        res = await FireStoreMethods().uploadPost(
+          _descriptionController.text,
+          await _videoFile!.readAsBytes(),
+          uid,
+          username,
+          profImage,
+          isVideo: true,
+        );
+      } else {
+        res = "No file selected";
+      }
+
       if (res == "success") {
         setState(() {
           isLoading = false;
@@ -84,7 +149,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
             'Posted!',
           );
         }
-        clearImage();
+        clearMedia();
       } else {
         if (context.mounted) {
           showSnackBar(context, res);
@@ -101,23 +166,20 @@ class _AddPostScreenState extends State<AddPostScreen> {
     }
   }
 
-  void clearImage() {
+  void clearMedia() {
     setState(() {
       _file = null;
+      _videoFile = null;
+      _videoPlayerController?.dispose();
+      _videoPlayerController = null;
     });
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-    _descriptionController.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final UserProvider userProvider = Provider.of<UserProvider>(context);
 
-    return _file == null
+    return _file == null && _videoFile == null
         ? Center(
             child: IconButton(
               icon: const Icon(
@@ -131,7 +193,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
               backgroundColor: mobileBackgroundColor,
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back),
-                onPressed: clearImage,
+                onPressed: clearMedia,
               ),
               title: const Text(
                 'Post to',
@@ -180,26 +242,60 @@ class _AddPostScreenState extends State<AddPostScreen> {
                         maxLines: 8,
                       ),
                     ),
-                    SizedBox(
-                      height: 45.0,
-                      width: 45.0,
-                      child: AspectRatio(
-                        aspectRatio: 487 / 451,
-                        child: Container(
-                          decoration: BoxDecoration(
-                              image: DecorationImage(
-                            fit: BoxFit.fill,
-                            alignment: FractionalOffset.topCenter,
-                            image: MemoryImage(_file!),
-                          )),
-                        ),
-                      ),
-                    ),
+                    _file != null
+                        ? SizedBox(
+                            height: 45.0,
+                            width: 45.0,
+                            child: AspectRatio(
+                              aspectRatio: 487 / 451,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                    image: DecorationImage(
+                                  fit: BoxFit.fill,
+                                  alignment: FractionalOffset.topCenter,
+                                  image: MemoryImage(_file!),
+                                )),
+                              ),
+                            ),
+                          )
+                        : _videoFile != null
+                            ? SizedBox(
+                                height: 45.0,
+                                width: 45.0,
+                                child: AspectRatio(
+                                  aspectRatio: 487 / 451,
+                                  child: VideoPlayer(_videoPlayerController!),
+                                ),
+                              )
+                            : Container(),
                   ],
                 ),
                 const Divider(),
               ],
             ),
           );
+  }
+
+  Future<Uint8List?> pickImageFromGallery() async {
+    final ImagePicker _picker = ImagePicker();
+    XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      return await image.readAsBytes();
+    }
+    return null;
+  }
+
+  Future<XFile?> pickVideoFromGallery() async {
+    final ImagePicker _picker = ImagePicker();
+    return await _picker.pickVideo(source: ImageSource.gallery);
+  }
+
+  Future<XFile> pickVideo(ImageSource source) async {
+    final ImagePicker _picker = ImagePicker();
+    XFile? video = await _picker.pickVideo(source: source);
+    if (video == null) {
+      throw Exception("No video selected");
+    }
+    return video;
   }
 }

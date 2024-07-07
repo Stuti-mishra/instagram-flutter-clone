@@ -9,17 +9,19 @@ class Post {
   final DateTime datePublished;
   final String postUrl;
   final String profImage;
+  final bool isVideo;  // New field to indicate if the post is a video
 
-  const Post(
-      {required this.description,
-      required this.uid,
-      required this.username,
-      required this.likes,
-      required this.postId,
-      required this.datePublished,
-      required this.postUrl,
-      required this.profImage,
-      });
+  const Post({
+    required this.description,
+    required this.uid,
+    required this.username,
+    required this.likes,
+    required this.postId,
+    required this.datePublished,
+    required this.postUrl,
+    required this.profImage,
+    required this.isVideo,  // Initialize the new field
+  });
 
   static Post fromSnap(DocumentSnapshot snap) {
     var snapshot = snap.data() as Map<String, dynamic>;
@@ -29,14 +31,15 @@ class Post {
       uid: snapshot["uid"],
       likes: snapshot["likes"],
       postId: snapshot["postId"],
-      datePublished: snapshot["datePublished"],
+      datePublished: (snapshot["datePublished"] as Timestamp).toDate(),  // Ensure the date is properly converted
       username: snapshot["username"],
       postUrl: snapshot['postUrl'],
-      profImage: snapshot['profImage']
+      profImage: snapshot['profImage'],
+      isVideo: snapshot['isVideo'] ?? false,  // Initialize the new field with a default value if not present
     );
   }
 
-   Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson() => {
         "description": description,
         "uid": uid,
         "likes": likes,
@@ -44,6 +47,7 @@ class Post {
         "postId": postId,
         "datePublished": datePublished,
         'postUrl': postUrl,
-        'profImage': profImage
+        'profImage': profImage,
+        'isVideo': isVideo,  // Add the new field to the JSON representation
       };
 }

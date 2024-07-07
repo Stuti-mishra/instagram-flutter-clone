@@ -17,6 +17,7 @@ import 'package:dialogflow_flutter/dialogflowFlutter.dart';
 import 'package:dialogflow_flutter/googleAuth.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:instagram_clone_flutter/utils/actions.dart' as custom_actions;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -114,16 +115,21 @@ class VoiceAssistant {
   late FlutterTts _flutterTts;
   late DialogFlow _dialogflow;
   bool _isListening = false;
+  late Function(bool) onListeningStateChanged;
 
-  VoiceAssistant() {
+  VoiceAssistant({required this.onListeningStateChanged}) {
     _speech = stt.SpeechToText();
     _flutterTts = FlutterTts();
     _initializeDialogflow();
   }
 
   void _initializeDialogflow() async {
-    AuthGoogle authGoogle = await AuthGoogle(fileJson: "assets/service_account_key.json").build();
-    _dialogflow = DialogFlow(authGoogle: authGoogle, language: "en");
+    try {
+      AuthGoogle authGoogle = await AuthGoogle(fileJson: "assets/service_account_key.json").build();
+      _dialogflow = DialogFlow(authGoogle: authGoogle, language: "en");
+    } catch (e) {
+      print("Error initializing DialogFlow: $e");
+    }
   }
 
   Future<void> requestMicrophonePermission() async {
@@ -133,23 +139,25 @@ class VoiceAssistant {
     }
   }
 
-  void startListening() async {
+  void startListening(BuildContext context) async {
     await requestMicrophonePermission();
 
     bool available = await _speech.initialize(
-      debugLogging: true,
       onStatus: (val) {
         print('onStatus: $val');
         if (val == 'done' || val == 'notListening') {
           _isListening = false;
+          onListeningStateChanged(false);
           print('Listening stopped or failed.');
         } else {
           _isListening = true;
+          onListeningStateChanged(true);
         }
       },
       onError: (val) {
         print('onError: ${val.errorMsg}');
         _isListening = false;
+        onListeningStateChanged(false);
         handleError(val);
       },
     );
@@ -160,21 +168,14 @@ class VoiceAssistant {
         onResult: (val) {
           if (val.hasConfidenceRating && val.confidence > 0) {
             print("------ recognized words: ${val.recognizedWords}");
-            _processCommand(val.recognizedWords);
+            _processCommand(val.recognizedWords, context);
           } else {
             print("------ no words recognized");
           }
         },
-        listenFor: Duration(seconds: 60),  // Increase the listening duration
-        pauseFor: Duration(seconds: 5),    // Increase the pause duration
+        listenFor: const Duration(seconds: 60),  // Increase the listening duration
+        pauseFor: const Duration(seconds: 5),    // Increase the pause duration
         localeId: "en_US",                 // Set the locale if necessary
-        // onSoundLevelChange: (level) {
-        //   print("Sound level: $level");
-        //   // Detect speaking by checking if sound level surpasses a threshold
-        //   if (level > -1.0) {
-        //     print("Voice detected");
-        //   }
-        // },
         cancelOnError: true,               // Cancel on error
         partialResults: true,              // Enable partial results
       );
@@ -186,12 +187,13 @@ class VoiceAssistant {
   void stopListening() {
     _speech.stop();
     _isListening = false;
+    onListeningStateChanged(false);
   }
 
   void handleError(error) {
     print("onError: ${error.errorMsg}");
     print("Error permanent: ${error.permanent}");
-  
+
     if (error.permanent) {
       // Handle the permanent error case
       if (error.errorMsg == 'error_speech_timeout') {
@@ -210,17 +212,34 @@ class VoiceAssistant {
     }
   }
 
-  void _processCommand(String command) async {
-    AIResponse response = await _dialogflow.detectIntent(command);
-    String? intent = response.queryResult?.intent?.displayName;
-    print("----------- intent: ${intent}");
-    _performAction(intent ?? "Unknown");
+  void _processCommand(String command, BuildContext context) async {
+    print("Inside process command - $command");
+    try {
+      AIResponse response = await _dialogflow.detectIntent(command);
+      if (response.queryResult == null) {
+        print("Null response from DialogFlow");
+        _speak("I didn't understand that. Please try again.");
+        return;
+      }
+      String? intent = response.queryResult?.intent?.displayName;
+      print("Intent: $intent");
+      _performAction(intent ?? "Unknown", context);
+    } catch (e) {
+      print("Error processing command: $e");
+      _speak("I didn't understand that. Please try again.");
+    }
   }
 
-  void _performAction(String intent) {
+  void _performAction(String intent, BuildContext context) {
     if (intent == 'Swipe Up') {
       _speak("Swiping up");
-      // Implement your swipe up action here
+      custom_actions.Actions.swipeUp(context); // Call the swipe up action
+    } else if (intent == 'Swipe Down') {
+      _speak("Swiping down");
+      custom_actions.Actions.swipeDown(context); // Call the swipe down action
+    } else if (intent == 'Add Post') {
+      _speak("Adding a post");
+      custom_actions.Actions.addPost(context); // Call the add post action
     } else {
       _speak("I didn't understand that.");
     }
@@ -230,3 +249,4 @@ class VoiceAssistant {
     await _flutterTts.speak(text);
   }
 }
+

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:instagram_clone_flutter/screens/profile_screen.dart';
 import 'package:instagram_clone_flutter/utils/colors.dart';
+import 'package:instagram_clone_flutter/widgets/full_screen_video.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({Key? key}) : super(key: key);
@@ -23,8 +25,7 @@ class _SearchScreenState extends State<SearchScreen> {
         title: Form(
           child: TextFormField(
             controller: searchController,
-            decoration:
-                const InputDecoration(labelText: 'Search for a user...'),
+            decoration: const InputDecoration(labelText: 'Search for a user...'),
             onFieldSubmitted: (String _) {
               setState(() {
                 isShowUsers = true;
@@ -78,7 +79,7 @@ class _SearchScreenState extends State<SearchScreen> {
           : FutureBuilder(
               future: FirebaseFirestore.instance
                   .collection('posts')
-                  .orderBy('datePublished')
+                  .orderBy('datePublished', descending: true)
                   .get(),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
@@ -90,15 +91,77 @@ class _SearchScreenState extends State<SearchScreen> {
                 return MasonryGridView.count(
                   crossAxisCount: 3,
                   itemCount: (snapshot.data! as dynamic).docs.length,
-                  itemBuilder: (context, index) => Image.network(
-                    (snapshot.data! as dynamic).docs[index]['postUrl'],
-                    fit: BoxFit.cover,
-                  ),
+                  itemBuilder: (context, index) {
+                    DocumentSnapshot snap = (snapshot.data! as dynamic).docs[index];
+                    String postUrl = snap['postUrl'];
+
+                    if (postUrl.endsWith('.mp4')) {
+                      // It's a video
+                      return FutureBuilder<String?>(
+                        future: getVideoThumbnail(postUrl),
+                        builder: (context, thumbnailSnapshot) {
+                          if (!thumbnailSnapshot.hasData) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
+                          return GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => FullScreenVideo(
+                                    videoUrl: postUrl,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Stack(
+                              children: [
+                                Positioned.fill(
+                                  child: Image.network(
+                                    thumbnailSnapshot.data!,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                                const Center(
+                                  child: Icon(
+                                    Icons.play_circle_outline,
+                                    color: Colors.white,
+                                    size: 50,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    } else {
+                      // It's an image
+                      return Image.network(
+                        postUrl,
+                        fit: BoxFit.cover,
+                      );
+                    }
+                  },
                   mainAxisSpacing: 8.0,
                   crossAxisSpacing: 8.0,
                 );
               },
             ),
     );
+  }
+
+  Future<String?> getVideoThumbnail(String videoUrl) async {
+    try {
+      final thumbnail = await VideoThumbnail.thumbnailFile(
+        video: videoUrl,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 128, // specify the width of the thumbnail, let's keep it small for better performance
+        quality: 75,
+      );
+      return thumbnail;
+    } catch (e) {
+      print("Error generating thumbnail: $e");
+      return null;
+    }
   }
 }

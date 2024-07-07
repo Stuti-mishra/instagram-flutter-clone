@@ -3,6 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:instagram_clone_flutter/utils/colors.dart';
 import 'package:instagram_clone_flutter/utils/global_variable.dart';
 import 'package:instagram_clone_flutter/main.dart'; // Import the VoiceAssistant class
+import 'package:instagram_clone_flutter/screens/feed_screen.dart';
+import 'package:instagram_clone_flutter/screens/search_screen.dart';
+import 'package:instagram_clone_flutter/screens/add_post_screen.dart';
+import 'package:instagram_clone_flutter/screens/profile_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 
 class MobileScreenLayout extends StatefulWidget {
   const MobileScreenLayout({Key? key}) : super(key: key);
@@ -21,7 +26,13 @@ class _MobileScreenLayoutState extends State<MobileScreenLayout> {
   void initState() {
     super.initState();
     pageController = PageController();
-    voiceAssistant = VoiceAssistant(); // Initialize VoiceAssistant
+    voiceAssistant = VoiceAssistant(
+      onListeningStateChanged: (isListening) {
+        setState(() {
+          _isListening = isListening;
+        });
+      },
+    ); // Initialize VoiceAssistant
   }
 
   @override
@@ -38,15 +49,17 @@ class _MobileScreenLayoutState extends State<MobileScreenLayout> {
   }
 
   void navigationTapped(int page) {
-    // Animating Page
+    setState(() {
+      _page = page;
+    });
     pageController.jumpToPage(page);
   }
 
-  void _toggleListening() {
+  void _toggleListening(BuildContext context) {
     if (_isListening) {
       voiceAssistant.stopListening();
     } else {
-      voiceAssistant.startListening();
+      voiceAssistant.startListening(context); // Pass context here
     }
     setState(() {
       _isListening = !_isListening;
@@ -56,18 +69,16 @@ class _MobileScreenLayoutState extends State<MobileScreenLayout> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        actions: [
-          IconButton(
-            icon: Icon(_isListening ? Icons.mic_off : Icons.mic),
-            onPressed: _toggleListening,
-          ),
-        ],
-      ),
       body: PageView(
         controller: pageController,
         onPageChanged: onPageChanged,
-        children: homeScreenItems,
+        children: [
+          const FeedScreen(),
+          const SearchScreen(),
+          const AddPostScreen(),
+          const Center(child: Text('Notifications Screen')),
+          ProfileScreen(uid: FirebaseAuth.instance.currentUser!.uid), // Use the current user's UID
+        ],
       ),
       bottomNavigationBar: CupertinoTabBar(
         backgroundColor: mobileBackgroundColor,
@@ -117,7 +128,7 @@ class _MobileScreenLayoutState extends State<MobileScreenLayout> {
         currentIndex: _page,
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _toggleListening,
+        onPressed: () => _toggleListening(context), // Pass context here
         child: Icon(_isListening ? Icons.mic_off : Icons.mic),
       ),
     );
