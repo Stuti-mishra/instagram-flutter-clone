@@ -4,7 +4,8 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:instagram_clone_flutter/screens/profile_screen.dart';
 import 'package:instagram_clone_flutter/utils/colors.dart';
 import 'package:instagram_clone_flutter/widgets/full_screen_video.dart';
-import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:visibility_detector/visibility_detector.dart';
+import 'package:video_player/video_player.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({Key? key}) : super(key: key);
@@ -94,45 +95,22 @@ class _SearchScreenState extends State<SearchScreen> {
                   itemBuilder: (context, index) {
                     DocumentSnapshot snap = (snapshot.data! as dynamic).docs[index];
                     String postUrl = snap['postUrl'];
-
-                    if (postUrl.endsWith('.mp4')) {
+                    Map<String, dynamic>? data = snap.data() as Map<String, dynamic>?;
+                    bool isVideo = data != null && data.containsKey('isVideo') ? snap['isVideo'] : false;
+                    if (isVideo) {
                       // It's a video
-                      return FutureBuilder<String?>(
-                        future: getVideoThumbnail(postUrl),
-                        builder: (context, thumbnailSnapshot) {
-                          if (!thumbnailSnapshot.hasData) {
-                            return const Center(child: CircularProgressIndicator());
-                          }
-                          return GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => FullScreenVideo(
-                                    videoUrl: postUrl,
-                                  ),
-                                ),
-                              );
-                            },
-                            child: Stack(
-                              children: [
-                                Positioned.fill(
-                                  child: Image.network(
-                                    thumbnailSnapshot.data!,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                                const Center(
-                                  child: Icon(
-                                    Icons.play_circle_outline,
-                                    color: Colors.white,
-                                    size: 50,
-                                  ),
-                                ),
-                              ],
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => FullScreenVideo(
+                                videoUrl: postUrl,
+                              ),
                             ),
                           );
                         },
+                        child: VideoWidget(videoUrl: postUrl),
                       );
                     } else {
                       // It's an image
@@ -149,19 +127,65 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
     );
   }
+}
 
-  Future<String?> getVideoThumbnail(String videoUrl) async {
-    try {
-      final thumbnail = await VideoThumbnail.thumbnailFile(
-        video: videoUrl,
-        imageFormat: ImageFormat.JPEG,
-        maxWidth: 128, // specify the width of the thumbnail, let's keep it small for better performance
-        quality: 75,
-      );
-      return thumbnail;
-    } catch (e) {
-      print("Error generating thumbnail: $e");
-      return null;
-    }
+class VideoWidget extends StatefulWidget {
+  final String videoUrl;
+
+  const VideoWidget({Key? key, required this.videoUrl}) : super(key: key);
+
+  @override
+  _VideoWidgetState createState() => _VideoWidgetState();
+}
+
+class _VideoWidgetState extends State<VideoWidget> {
+  late VideoPlayerController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.network(widget.videoUrl)
+      ..initialize().then((_) {
+        setState(() {});
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return VisibilityDetector(
+      key: Key(widget.videoUrl),
+      onVisibilityChanged: (visibilityInfo) {
+        if (visibilityInfo.visibleFraction > 0.5) {
+          _controller.play();
+        } else {
+          _controller.pause();
+        }
+      },
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: _controller.value.isInitialized
+                ? AspectRatio(
+                    aspectRatio: _controller.value.aspectRatio,
+                    child: VideoPlayer(_controller),
+                  )
+                : const Center(child: CircularProgressIndicator()),
+          ),
+          const Center(
+            child: Icon(
+              Icons.play_circle_outline,
+              color: Colors.white,
+              size: 50,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
